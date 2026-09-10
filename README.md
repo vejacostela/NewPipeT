@@ -2,6 +2,11 @@
 <h2 align="center"><b>NewPipe</b></h2>
 <h4 align="center">A libre lightweight streaming front-end for Android.</h4>
 
+> This fork checks NewPipeExtractor upstream twice daily. Compatible revisions are
+> proposed in a tested pull request, keeping YouTube fixes reviewable and avoiding
+> unsafe runtime code downloads. See the
+> [extractor updater workflow](.github/workflows/update-newpipe-extractor.yml).
+
 <p align="center"><a href="https://f-droid.org/packages/org.schabi.newpipe/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on-en.svg" alt="Get it on F-Droid" width=206/></a></p>
 
 <p align="center">
