@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="newpipet_channel_key" translatable="false">newpipet_update_channel</string>
+    <string name="newpipet_policy_key" translatable="false">newpipet_remote_compatibility</string>
+    <string name="newpipet_diagnostics_key" translatable="false">newpipet_diagnostics</string>
+    <string name="newpipet_clear_cache_key" translatable="false">newpipet_clear_metadata_cache</string>
+    <string name="newpipet_no_release">No signed NewPipeT update is available yet.</string>
+    <string name="newpipet_update_failed">Could not verify an update. Try again later.</string>
+    <string name="newpipet_channel_title">Update channel</string>
+    <string name="newpipet_policy_title">Receive compatibility settings</string>
+    <string name="newpipet_policy_summary">Allow signed settings from NewPipeT during update checks. Expired or invalid settings use the built-in defaults.</string>
+    <string name="newpipet_diagnostics_title">Playback diagnostics</string>
+    <string name="newpipet_diagnostics_summary">View local session counters and copy a report without video URLs or browsing history. Nothing is sent automatically.</string>
+    <string name="newpipet_clear_diagnostics">Reset counters</string>
+    <string name="newpipet_clear_cache_title">Refresh video information</string>
+    <string name="newpipet_clear_cache_summary">Clear temporary metadata. Downloads, subscriptions and history are preserved.</string>
+    <string name="newpipet_cache_cleared">Temporary video information cleared.</string>
+    <string-array name="newpipet_channels">
+        <item>Stable — regular releases</item>
+        <item>Beta — includes experimental releases</item>
+    </string-array>
+    <string-array name="newpipet_channel_values" translatable="false">
+        <item>stable</item>
+        <item>beta</item>
+    </string-array>
+</resources>

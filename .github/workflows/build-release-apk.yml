@@ -1,38 +1,137 @@
-name: "Build unsigned release APK on master"
+name: Build signed NewPipeT release
 
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        type: choice
+        options: [beta, stable]
+        default: beta
+      tag:
+        description: New immutable tag, for example v0.30.0-beta1
+        type: string
+        required: true
+      version_code:
+        description: Android version code greater than every previously distributed build
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newpipet-release
+  cancel-in-progress: false
 
 jobs:
-  release:
+  validate:
+    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 'master'
-
+          persist-credentials: false
       - uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '21'
-          cache: 'gradle'
-
-      - name: "Build release APK"
-        run: ./gradlew assembleRelease --stacktrace
-
-      - name: "Rename APK"
+          java-version: 21
+          distribution: temurin
+          cache: gradle
+      - name: Validate inputs and code
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERSION_CODE: ${{ inputs.version_code }}
         run: |
-          VERSION_NAME="$(jq -r ".elements[0].versionName" "app/build/outputs/apk/release/output-metadata.json")"
-          echo "Version name: $VERSION_NAME" >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          cat "app/build/outputs/apk/release/output-metadata.json" >> "$GITHUB_STEP_SUMMARY"
-          echo >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          # assume there is only one APK in that folder
-          mv app/build/outputs/apk/release/*.apk "app/build/outputs/apk/release/NewPipe_v$VERSION_NAME.apk"
-
-      - name: "Upload APK"
-        uses: actions/upload-artifact@v7
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9][A-Za-z0-9._-]*$ ]]
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
+          (( VERSION_CODE <= 2100000000 ))
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          ./gradlew assembleContinuous lintContinuous testDebugUnitTest --stacktrace -DskipFormatKtlint
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Require working extraction and decoded playback
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: app
-          path: app/build/outputs/apk/release/*.apk
+          api-level: 35
+          arch: x86_64
+          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.schabi.newpipe.compatibility.YouTubePlaybackTest -Pandroid.testInstrumentationRunnerArguments.youtubeLiveTests=true -DskipFormatKtlint
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release-validation
+          path: |
+            app/build/reports/
+            app/build/outputs/androidTest-results/
+
+  sign:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: newpipet-${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: gradle
+      - name: Build and sign APK and metadata
+        env:
+          NEWPIPET_KEYSTORE_BASE64: ${{ secrets.NEWPIPET_KEYSTORE_BASE64 }}
+          NEWPIPET_STORE_PASSWORD: ${{ secrets.NEWPIPET_STORE_PASSWORD }}
+          NEWPIPET_KEY_ALIAS: ${{ secrets.NEWPIPET_KEY_ALIAS }}
+          NEWPIPET_KEY_PASSWORD: ${{ secrets.NEWPIPET_KEY_PASSWORD }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          test -n "$NEWPIPET_KEYSTORE_BASE64" || { echo 'Configure the four NEWPIPET signing secrets in this repository.' >&2; exit 1; }
+          export NEWPIPET_KEYSTORE="$RUNNER_TEMP/newpipet-release.keystore"
+          umask 077
+          printf '%s' "$NEWPIPET_KEYSTORE_BASE64" | base64 --decode > "$NEWPIPET_KEYSTORE"
+          ./gradlew :app:assembleRelease -DversionCodeOverride="$VERSION_CODE" -DversionNameOverride="${RELEASE_TAG#v}" -DskipFormatKtlint
+          mkdir -p dist
+          apk="$(python3 -c 'import json; from pathlib import Path; p=Path("app/build/outputs/apk/release/output-metadata.json"); d=json.loads(p.read_text()); assert len(d["elements"])==1; print(p.parent/d["elements"][0]["outputFile"])')"
+          python3 scripts/release_manifest.py --metadata app/build/outputs/apk/release/output-metadata.json --apk "$apk" --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" --output "$RUNNER_TEMP/newpipet-manifest.json"
+          java scripts/SignDocument.java "$RUNNER_TEMP/newpipet-manifest.json" dist/newpipet-update.json
+          cp "$apk" dist/NewPipeT.apk
+          sha256sum dist/NewPipeT.apk > dist/SHA256SUMS
+      - name: Delete local signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/newpipet-release.keystore" "$RUNNER_TEMP/newpipet-manifest.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: signed-release
+          path: dist/
+          retention-days: 7
+
+  draft-release:
+    needs: sign
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: signed-release
+          path: dist
+      - name: Create reviewable release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          options=()
+          if [[ "$RELEASE_CHANNEL" == beta ]]; then options+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" dist/* --target "$COMMIT_SHA" --draft "${options[@]}" --title "NewPipeT $RELEASE_TAG" --notes 'Validated APK and signed update metadata. Review the validation artifact and publish when ready.'

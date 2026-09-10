@@ -55,6 +55,9 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.media.AudioManager;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -80,6 +83,7 @@ import com.google.android.exoplayer2.text.CueGroup;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.MappingTrackSelector;
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
+import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.google.android.exoplayer2.video.VideoSize;
 
 import org.schabi.newpipe.MainActivity;
@@ -102,6 +106,10 @@ import org.schabi.newpipe.player.helper.CustomRenderersFactory;
 import org.schabi.newpipe.player.helper.LoadController;
 import org.schabi.newpipe.player.helper.PlayerDataSource;
 import org.schabi.newpipe.player.helper.PlayerHelper;
+import org.schabi.newpipe.player.helper.PlaybackDiagnostics;
+import org.schabi.newpipe.player.helper.RecoveryBudget;
+import org.schabi.newpipe.updates.CompatibilityPolicyStore;
+import org.schabi.newpipe.util.StreamExpiry;
 import org.schabi.newpipe.player.mediaitem.MediaItemTag;
 import org.schabi.newpipe.player.mediasession.MediaSessionPlayerUi;
 import org.schabi.newpipe.player.notification.NotificationPlayerUi;
@@ -185,6 +193,13 @@ public final class Player implements PlaybackListener, Listener {
     /*//////////////////////////////////////////////////////////////////////////
     // Playback
     //////////////////////////////////////////////////////////////////////////*/
+
+    private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
+    private final RecoveryBudget recoveryBudget = new RecoveryBudget();
+    private Runnable pendingRecovery;
+    private String recoveryItemKey;
+    private long playbackStartedAt;
+    private boolean firstFrameRecorded;
 
     // play queue might be null e.g. while player is starting
     @Nullable
@@ -609,6 +624,8 @@ public final class Player implements PlaybackListener, Listener {
         setPlaybackParameters(savedParameters.speed, savedParameters.pitch, playbackSkipSilence);
 
         playQueue = queue;
+        recoveryBudget.reset();
+        recoveryItemKey = null;
         playQueue.init();
         reloadPlayQueueManager();
 
@@ -666,6 +683,7 @@ public final class Player implements PlaybackListener, Listener {
     //region Destroy and recovery
 
     private void destroyPlayer() {
+        cancelPendingRecovery();
         if (DEBUG) {
             Log.d(TAG, "destroyPlayer() called");
         }
@@ -1481,6 +1499,10 @@ public final class Player implements PlaybackListener, Listener {
 
     @Override
     public void onRenderedFirstFrame() {
+        if (!firstFrameRecorded) {
+            firstFrameRecorded = true;
+            PlaybackDiagnostics.firstFrame(SystemClock.elapsedRealtime() - playbackStartedAt);
+        }
         UIs.call(PlayerUi::onRenderedFirstFrame);
     }
 
@@ -1548,6 +1570,10 @@ public final class Player implements PlaybackListener, Listener {
         Log.e(TAG, "ExoPlayer - onPlayerError() called with:", error);
 
         saveStreamProgressState();
+        PlaybackDiagnostics.failed(error.errorCode);
+        if (tryRecoverPlayback(error)) {
+            return;
+        }
         boolean isCatchableException = false;
 
         switch (error.errorCode) {
@@ -1579,9 +1605,8 @@ public final class Player implements PlaybackListener, Listener {
             case ERROR_CODE_IO_NETWORK_CONNECTION_FAILED:
             case ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT:
             case ERROR_CODE_UNSPECIFIED:
-                // Reload playback on unexpected errors:
-                setRecovery();
-                reloadPlayQueueManager();
+                // The bounded retry policy was exhausted or the failure is not transient.
+                onPlaybackShutdown();
                 break;
             default:
                 // API, remote and renderer errors belong here:
@@ -1595,6 +1620,61 @@ public final class Player implements PlaybackListener, Listener {
 
         if (fragmentListener != null) {
             fragmentListener.onPlayerError(error, isCatchableException);
+        }
+    }
+
+    private boolean tryRecoverPlayback(final PlaybackException error) {
+        if (exoPlayerIsNull() || playQueue == null || playQueue.getItem() == null) {
+            return false;
+        }
+        final PlayQueueItem item = playQueue.getItem();
+        boolean expired = false;
+        Throwable cause = error;
+        for (int depth = 0; cause != null && depth < 10; depth++, cause = cause.getCause()) {
+            if (cause instanceof HttpDataSource.InvalidResponseCodeException) {
+                final HttpDataSource.InvalidResponseCodeException httpError =
+                        (HttpDataSource.InvalidResponseCodeException) cause;
+                expired = item.getServiceId() == YouTube.getServiceId()
+                        && httpError.responseCode == 403
+                        && StreamExpiry.isExpired(httpError.dataSpec.uri.toString(),
+                                System.currentTimeMillis());
+                break;
+            }
+        }
+        final boolean transientError = error.errorCode == ERROR_CODE_TIMEOUT
+                || error.errorCode == ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+                || error.errorCode == ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT;
+        final var policy = CompatibilityPolicyStore.current(context);
+        final long delay = recoveryBudget.nextDelay(expired, transientError,
+                policy.getNetworkRetries(), policy.getRefreshExpiredStreams());
+        if (delay < 0) {
+            return false;
+        }
+        cancelPendingRecovery();
+        setRecovery();
+        final boolean refresh = expired;
+        final PlayQueue queue = playQueue;
+        pendingRecovery = () -> {
+            pendingRecovery = null;
+            if (exoPlayerIsNull() || playQueue != queue || playQueue.getItem() != item) {
+                return;
+            }
+            if (refresh) {
+                // Mark the next extraction as forced; superseded responses cannot poison cache.
+                item.refreshStream();
+            }
+            reloadPlayQueueManager();
+        };
+        PlaybackDiagnostics.retry();
+        onBuffering();
+        recoveryHandler.postDelayed(pendingRecovery, delay);
+        return true;
+    }
+
+    private void cancelPendingRecovery() {
+        if (pendingRecovery != null) {
+            recoveryHandler.removeCallbacks(pendingRecovery);
+            pendingRecovery = null;
         }
     }
 
@@ -1665,6 +1745,16 @@ public final class Player implements PlaybackListener, Listener {
         }
         if (exoPlayerIsNull() || playQueue == null || currentItem == item) {
             return; // nothing to synchronize
+        }
+
+        final String itemKey = item.getServiceId() + ":" + item.getUrl();
+        if (!itemKey.equals(recoveryItemKey)) {
+            cancelPendingRecovery();
+            recoveryBudget.reset();
+            recoveryItemKey = itemKey;
+            playbackStartedAt = SystemClock.elapsedRealtime();
+            firstFrameRecorded = false;
+            PlaybackDiagnostics.started();
         }
 
         final int playQueueIndex = playQueue.indexOf(item);
@@ -1770,6 +1860,7 @@ public final class Player implements PlaybackListener, Listener {
     }
 
     public void pause() {
+        cancelPendingRecovery();
         if (DEBUG) {
             Log.d(TAG, "pause() called");
         }

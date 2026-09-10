@@ -54,8 +54,18 @@ jobs:
           distribution: "temurin"
           cache: 'gradle'
 
+      - name: Validate release tooling
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
       - name: Build debug APK and run jvm tests
         run: ./gradlew assembleContinuous lintContinuous testDebugUnitTest --stacktrace -DskipFormatKtlint
+
+      - name: Preserve JVM and lint reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jvm-reports
+          path: app/build/reports/
 
       - name: Upload APK
         uses: actions/upload-artifact@v7

@@ -40,6 +40,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="@dimen/activity_vertical_margin"
                 android:text="@string/what_happened_headline"
+                android:accessibilityHeading="true"
                 android:textAppearance="?android:attr/textAppearanceMedium" />
 
             <org.schabi.newpipe.views.NewPipeTextView
@@ -54,6 +55,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="@dimen/activity_vertical_margin"
                 android:text="@string/what_device_headline"
+                android:accessibilityHeading="true"
                 android:textAppearance="?android:attr/textAppearanceMedium" />
 
             <LinearLayout
@@ -87,6 +89,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="@dimen/activity_vertical_margin"
                 android:text="@string/error_details_headline"
+                android:accessibilityHeading="true"
                 android:textAppearance="?android:attr/textAppearanceMedium" />
 
             <HorizontalScrollView
@@ -116,6 +119,7 @@
                 android:inputType="" />
 
             <Button
+                android:minHeight="48dp"
                 android:id="@+id/errorReportEmailButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -130,12 +134,14 @@
                 android:textStyle="bold" />
 
             <Button
+                android:minHeight="48dp"
                 android:id="@+id/errorReportCopyButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/copy_for_github" />
 
             <Button
+                android:minHeight="48dp"
                 android:id="@+id/errorReportGitHubButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

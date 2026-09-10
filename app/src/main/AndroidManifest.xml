@@ -38,6 +38,7 @@
         android:resizeableActivity="true"
         android:theme="@style/OpeningTheme"
         tools:ignore="AllowBackup">
+        <meta-data android:name="io.github.vejacostela.newpipet.release" android:value="${ownedRelease}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

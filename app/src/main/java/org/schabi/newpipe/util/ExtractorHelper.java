@@ -63,6 +63,7 @@ import io.reactivex.rxjava3.disposables.CompositeDisposable;
 public final class ExtractorHelper {
     private static final String TAG = ExtractorHelper.class.getSimpleName();
     private static final InfoCache CACHE = InfoCache.getInstance();
+    private static final SingleFlight<StreamInfo> STREAM_REQUESTS = new SingleFlight<>();
 
     private ExtractorHelper() {
         //no instance
@@ -114,8 +115,12 @@ public final class ExtractorHelper {
     public static Single<StreamInfo> getStreamInfo(final int serviceId, final String url,
                                                    final boolean forceLoad) {
         checkServiceId(serviceId);
-        return checkCache(forceLoad, serviceId, url, InfoCache.Type.STREAM,
-                Single.fromCallable(() -> StreamInfo.getInfo(NewPipe.getService(serviceId), url)));
+        return STREAM_REQUESTS.load(serviceId + ":" + url, forceLoad,
+                () -> (StreamInfo) CACHE.getFromKey(serviceId, url, InfoCache.Type.STREAM),
+                () -> CACHE.removeInfo(serviceId, url, InfoCache.Type.STREAM),
+                () -> Single.fromCallable(() ->
+                        StreamInfo.getInfo(NewPipe.getService(serviceId), url)),
+                info -> CACHE.putInfo(serviceId, url, info, InfoCache.Type.STREAM));
     }
 
     public static Single<ChannelInfo> getChannelInfo(final int serviceId, final String url,

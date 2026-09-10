@@ -27,6 +27,7 @@ import androidx.collection.LruCache;
 
 import org.schabi.newpipe.MainActivity;
 import org.schabi.newpipe.extractor.Info;
+import org.schabi.newpipe.extractor.stream.StreamInfo;
 
 import java.util.Map;
 
@@ -115,7 +116,11 @@ public final class InfoCache {
             Log.d(TAG, "putInfo() called with: info = [" + info + "]");
         }
 
-        final long expirationMillis = ServiceHelper.getCacheExpirationMillis(info.getServiceId());
+        final long defaultExpiration = ServiceHelper.getCacheExpirationMillis(info.getServiceId());
+        final long expirationMillis = info instanceof StreamInfo
+                ? StreamExpiry.cacheLifetime((StreamInfo) info,
+                        Math.min(defaultExpiration, 5 * 60 * 1000L), System.currentTimeMillis())
+                : defaultExpiration;
         synchronized (LRU_CACHE) {
             final CacheData data = new CacheData(info, expirationMillis);
             LRU_CACHE.put(keyOf(serviceId, url, cacheType), data);

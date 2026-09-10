@@ -6,7 +6,6 @@
 package org.schabi.newpipe.error
 
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -15,7 +14,6 @@ import android.view.MenuItem
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.IntentCompat
-import androidx.core.net.toUri
 import com.grack.nanojson.JsonWriter
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -57,9 +55,6 @@ class ErrorActivity : AppCompatActivity() {
             return "$name $osBase ${Build.VERSION.RELEASE} - ${Build.VERSION.SDK_INT}"
         }
 
-    private val errorEmailSubject: String
-        get() = "$ERROR_EMAIL_SUBJECT ${getString(R.string.app_name)} ${BuildConfig.VERSION_NAME}"
-
     // /////////////////////////////////////////////////////////////////////
     // Activity lifecycle
     // /////////////////////////////////////////////////////////////////////
@@ -87,9 +82,7 @@ class ErrorActivity : AppCompatActivity() {
         // print current time, as zoned ISO8601 timestamp
         currentTimeStamp = ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-        binding.errorReportEmailButton.setOnClickListener { _ ->
-            openPrivacyPolicyDialog(this, "EMAIL")
-        }
+        binding.errorReportEmailButton.visibility = android.view.View.GONE
 
         binding.errorReportCopyButton.setOnClickListener { _ ->
             ShareUtils.copyToClipboard(this, buildMarkdown())
@@ -143,14 +136,7 @@ class ErrorActivity : AppCompatActivity() {
                 ShareUtils.openUrlInApp(context, context.getString(R.string.privacy_policy_url))
             }
             .setPositiveButton(R.string.accept) { _, _ ->
-                if (action == "EMAIL") { // send on email
-                    val intent = Intent(Intent.ACTION_SENDTO)
-                        .setData("mailto:".toUri()) // only email apps should handle this
-                        .putExtra(Intent.EXTRA_EMAIL, arrayOf(ERROR_EMAIL_ADDRESS))
-                        .putExtra(Intent.EXTRA_SUBJECT, errorEmailSubject)
-                        .putExtra(Intent.EXTRA_TEXT, buildJson())
-                    ShareUtils.openIntentInApp(context, intent)
-                } else if (action == "GITHUB") { // open the NewPipe issue page on GitHub
+                if (action == "GITHUB") {
                     ShareUtils.openUrlInApp(this, ERROR_GITHUB_ISSUE_URL)
                 }
             }
@@ -185,16 +171,17 @@ class ErrorActivity : AppCompatActivity() {
             return JsonWriter.string()
                 .`object`()
                 .value("user_action", errorInfo.userAction.message)
-                .value("request", errorInfo.request)
+                .value("request", "[omitted]")
                 .value("content_language", contentLanguageString)
                 .value("content_country", contentCountryString)
                 .value("app_language", appLanguage)
                 .value("service", errorInfo.getServiceName())
                 .value("package", packageName)
                 .value("version", BuildConfig.VERSION_NAME)
+                .value("extractor", BuildConfig.EXTRACTOR_VERSION)
                 .value("os", osString)
                 .value("time", currentTimeStamp)
-                .array("exceptions", errorInfo.stackTraces.toList())
+                .array("exceptions", errorInfo.stackTraces.map(DiagnosticRedactor::stackTrace))
                 .value("user_comment", binding.errorCommentBox.getText().toString())
                 .end()
                 .done()
@@ -216,7 +203,7 @@ class ErrorActivity : AppCompatActivity() {
                 // basic error info
                 appendLine("## Exception")
                 appendLine("* __User Action:__ ${errorInfo.userAction.message}")
-                appendLine("* __Request:__ ${errorInfo.request}")
+                appendLine("* __Request:__ [omitted]")
                 appendLine("* __Content Country:__ $contentCountryString")
                 appendLine("* __Content Language:__ $contentLanguageString")
                 appendLine("* __App Language:__ $appLanguage")
@@ -225,6 +212,7 @@ class ErrorActivity : AppCompatActivity() {
                 appendLine("* __Package:__ $packageName")
                 appendLine("* __Service:__ ${errorInfo.getServiceName()}")
                 appendLine("* __Version:__ ${BuildConfig.VERSION_NAME}")
+                appendLine("* __Extractor:__ ${BuildConfig.EXTRACTOR_VERSION}")
                 appendLine("* __OS:__ $osString")
 
                 // Collapse all logs to a single paragraph when there are more than one
@@ -243,7 +231,7 @@ class ErrorActivity : AppCompatActivity() {
                     }
                     append("</b>")
                     append("</summary><p>\n")
-                    append("\n```\n${stacktrace}\n```\n")
+                    append("\n```\n${DiagnosticRedactor.stackTrace(stacktrace)}\n```\n")
                     append("</details>\n")
                 }
 
@@ -274,9 +262,7 @@ class ErrorActivity : AppCompatActivity() {
         // BUNDLE TAGS
         const val ERROR_INFO = "error_info"
 
-        private const val ERROR_EMAIL_ADDRESS = "crashreport@newpipe.schabi.org"
-        private const val ERROR_EMAIL_SUBJECT = "Exception in "
 
-        private const val ERROR_GITHUB_ISSUE_URL = "https://github.com/TeamNewPipe/NewPipe/issues"
+        private const val ERROR_GITHUB_ISSUE_URL = "https://github.com/vejacostela/NewPipeT/issues"
     }
 }
