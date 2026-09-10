@@ -32,3 +32,9 @@ node_modules/
 !*.xcodeproj/project.xcworkspace/
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
+
+# Local signing material and Python caches
+*.jks
+*.keystore
+__pycache__/
+*.pyc
