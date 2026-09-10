@@ -10,6 +10,8 @@ class DiagnosticRedactorTest {
         val trace = """
             java.io.IOException: https://example.com/watch?v=private&token=secret
             Cookie: SID=credential
+            at Authorization: secret
+            ... personal search term
                 at org.example.Player.open(Player.java:30)
             Caused by: java.lang.IllegalStateException: personal search term
         """.trimIndent()
@@ -17,6 +19,7 @@ class DiagnosticRedactorTest {
         assertFalse(result.contains("private"))
         assertFalse(result.contains("credential"))
         assertFalse(result.contains("personal"))
+        assertFalse(result.contains("secret"))
         assertTrue(result.contains("java.io.IOException"))
         assertTrue(result.contains("Player.java:30"))
     }

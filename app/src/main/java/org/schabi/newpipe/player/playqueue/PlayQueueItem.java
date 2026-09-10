@@ -37,7 +37,7 @@ public class PlayQueueItem implements Serializable {
 
     private long recoveryPosition;
     private Throwable error;
-    private transient volatile boolean refreshStream;
+    private transient boolean refreshStream;
 
     public PlayQueueItem(@NonNull final StreamInfo info) {
         this(info.getName(), info.getUrl(), info.getServiceId(), info.getDuration(),
@@ -140,14 +140,18 @@ public class PlayQueueItem implements Serializable {
 
     @NonNull
     public Single<StreamInfo> getStream() {
-        final boolean force = refreshStream;
-        refreshStream = false;
-        return ExtractorHelper.getStreamInfo(this.serviceId, this.url, force)
+        return Single.defer(() -> {
+                    synchronized (this) {
+                        final boolean force = refreshStream;
+                        refreshStream = false;
+                        return ExtractorHelper.getStreamInfo(this.serviceId, this.url, force);
+                    }
+                })
                 .subscribeOn(Schedulers.io())
                 .doOnError(throwable -> error = throwable);
     }
 
-    public void refreshStream() {
+    public synchronized void refreshStream() {
         refreshStream = true;
     }
 

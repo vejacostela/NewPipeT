@@ -197,7 +197,7 @@ public final class Player implements PlaybackListener, Listener {
     private final Handler recoveryHandler = new Handler(Looper.getMainLooper());
     private final RecoveryBudget recoveryBudget = new RecoveryBudget();
     private Runnable pendingRecovery;
-    private String recoveryItemKey;
+    private PlayQueueItem recoveryItem;
     private long playbackStartedAt;
     private boolean firstFrameRecorded;
 
@@ -625,7 +625,7 @@ public final class Player implements PlaybackListener, Listener {
 
         playQueue = queue;
         recoveryBudget.reset();
-        recoveryItemKey = null;
+        recoveryItem = null;
         playQueue.init();
         reloadPlayQueueManager();
 
@@ -1141,6 +1141,9 @@ public final class Player implements PlaybackListener, Listener {
             Log.d(TAG, "Playback - onPlaybackBlock() called");
         }
 
+        if (playQueue != null && playQueue.getItem() != null) {
+            trackPlaybackItem(playQueue.getItem());
+        }
         currentItem = null;
         currentMetadata = null;
         simpleExoPlayer.stop();
@@ -1499,7 +1502,7 @@ public final class Player implements PlaybackListener, Listener {
 
     @Override
     public void onRenderedFirstFrame() {
-        if (!firstFrameRecorded) {
+        if (recoveryItem != null && !firstFrameRecorded) {
             firstFrameRecorded = true;
             PlaybackDiagnostics.firstFrame(SystemClock.elapsedRealtime() - playbackStartedAt);
         }
@@ -1628,6 +1631,7 @@ public final class Player implements PlaybackListener, Listener {
             return false;
         }
         final PlayQueueItem item = playQueue.getItem();
+        trackPlaybackItem(item);
         boolean expired = false;
         Throwable cause = error;
         for (int depth = 0; cause != null && depth < 10; depth++, cause = cause.getCause()) {
@@ -1656,7 +1660,8 @@ public final class Player implements PlaybackListener, Listener {
         final PlayQueue queue = playQueue;
         pendingRecovery = () -> {
             pendingRecovery = null;
-            if (exoPlayerIsNull() || playQueue != queue || playQueue.getItem() != item) {
+            if (exoPlayerIsNull() || playQueue != queue || playQueue.getItem() != item
+                    || !simpleExoPlayer.getPlayWhenReady()) {
                 return;
             }
             if (refresh) {
@@ -1676,6 +1681,18 @@ public final class Player implements PlaybackListener, Listener {
             recoveryHandler.removeCallbacks(pendingRecovery);
             pendingRecovery = null;
         }
+    }
+
+    private void trackPlaybackItem(final PlayQueueItem item) {
+        if (recoveryItem == item) {
+            return;
+        }
+        cancelPendingRecovery();
+        recoveryBudget.reset();
+        recoveryItem = item;
+        playbackStartedAt = SystemClock.elapsedRealtime();
+        firstFrameRecorded = false;
+        PlaybackDiagnostics.started();
     }
 
     private void createErrorNotification(@NonNull final PlaybackException error) {
@@ -1747,15 +1764,7 @@ public final class Player implements PlaybackListener, Listener {
             return; // nothing to synchronize
         }
 
-        final String itemKey = item.getServiceId() + ":" + item.getUrl();
-        if (!itemKey.equals(recoveryItemKey)) {
-            cancelPendingRecovery();
-            recoveryBudget.reset();
-            recoveryItemKey = itemKey;
-            playbackStartedAt = SystemClock.elapsedRealtime();
-            firstFrameRecorded = false;
-            PlaybackDiagnostics.started();
-        }
+        trackPlaybackItem(item);
 
         final int playQueueIndex = playQueue.indexOf(item);
         final int playlistIndex = simpleExoPlayer.getCurrentMediaItemIndex();
