@@ -156,7 +156,9 @@ class NewVersionWorker(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
-                "newpipet-updates-$channel-$isManual", ExistingWorkPolicy.KEEP, request
+                "newpipet-updates-$channel-$isManual",
+                ExistingWorkPolicy.KEEP,
+                request
             )
         }
     }

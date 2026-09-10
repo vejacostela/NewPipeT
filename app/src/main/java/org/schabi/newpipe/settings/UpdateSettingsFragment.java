@@ -47,10 +47,12 @@ public class UpdateSettingsFragment extends BasePreferenceFragment {
         requirePreference(R.string.manual_update_key).setEnabled(release);
         requirePreference(R.string.newpipet_channel_key).setEnabled(release);
         requirePreference(R.string.newpipet_policy_key).setEnabled(release);
-        requirePreference(R.string.newpipet_channel_key).setOnPreferenceChangeListener((p, value) -> {
-            defaultPreferences.edit().putLong(getString(R.string.update_expiry_key), 0).apply();
-            return true;
-        });
+        requirePreference(R.string.newpipet_channel_key)
+                .setOnPreferenceChangeListener((p, value) -> {
+                    defaultPreferences.edit()
+                            .putLong(getString(R.string.update_expiry_key), 0).apply();
+                    return true;
+                });
         requirePreference(R.string.newpipet_diagnostics_key).setOnPreferenceClickListener(p -> {
             final String report = PlaybackDiagnostics.report();
             new AlertDialog.Builder(requireContext())

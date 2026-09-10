@@ -63,11 +63,13 @@ class OwnedUpdateClient(context: Context) {
         fun installedKey(context: Context): PublicKey {
             val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 context.packageManager.getPackageInfo(
-                    context.packageName, PackageManager.GET_SIGNING_CERTIFICATES
+                    context.packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES
                 ).signingInfo!!.apkContentsSigners
             } else {
                 context.packageManager.getPackageInfo(
-                    context.packageName, PackageManager.GET_SIGNATURES
+                    context.packageName,
+                    PackageManager.GET_SIGNATURES
                 ).signatures!!
             }
             require(signatures.size == 1) { "A single release signing key is required" }

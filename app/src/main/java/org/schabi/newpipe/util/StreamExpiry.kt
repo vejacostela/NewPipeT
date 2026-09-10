@@ -10,7 +10,9 @@ object StreamExpiry {
         val uri = URI(url)
         if (uri.scheme != "https" ||
             !(uri.host == "googlevideo.com" || uri.host?.endsWith(".googlevideo.com") == true)
-        ) return@runCatching null
+        ) {
+            return@runCatching null
+        }
         val seconds = uri.rawQuery?.split('&')
             ?.singleOrNull { it.startsWith("expire=") }
             ?.removePrefix("expire=")?.toLongOrNull() ?: return@runCatching null
@@ -19,8 +21,7 @@ object StreamExpiry {
     }.getOrNull()
 
     @JvmStatic
-    fun isExpired(url: String, nowMillis: Long): Boolean =
-        expiresAt(url)?.let { it <= nowMillis } ?: false
+    fun isExpired(url: String, nowMillis: Long): Boolean = expiresAt(url)?.let { it <= nowMillis } ?: false
 
     @JvmStatic
     fun cacheLifetime(info: StreamInfo, defaultMillis: Long, nowMillis: Long): Long {

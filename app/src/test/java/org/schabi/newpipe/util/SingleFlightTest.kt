@@ -13,7 +13,15 @@ class SingleFlightTest {
     private var network: Single<String> = SingleSubject.create()
 
     private fun load(force: Boolean = false): Single<String> = flights.load(
-        "video", force, { cached }, { cached = null }, { calls++; network }, { cached = it }
+        "video",
+        force,
+        { cached },
+        { cached = null },
+        {
+            calls++
+            network
+        },
+        { cached = it }
     )
 
     @Test fun `share concurrent extraction and reuse completed cache`() {

@@ -14,28 +14,35 @@ object PlaybackDiagnostics {
 
     @JvmStatic
     @Synchronized
-    fun started() { starts++ }
+    fun started() {
+        starts++
+    }
+
     @JvmStatic
     @Synchronized
     fun firstFrame(elapsedMs: Long) {
         frames++
         lastStartupMs = elapsedMs.coerceAtLeast(0)
     }
+
     @JvmStatic
     @Synchronized
-    fun retry() { retries++ }
+    fun retry() {
+        retries++
+    }
+
     @JvmStatic
     @Synchronized
     fun failed(errorCode: Int) {
         failures++
         lastError = "player_$errorCode"
     }
+
     @JvmStatic
     @Synchronized
-    fun report(): String =
-        "NewPipeT ${BuildConfig.VERSION_NAME}\nExtractor ${BuildConfig.EXTRACTOR_VERSION}\n" +
-            "starts=$starts\nfirst_frames=$frames\nretries=$retries\nerrors=$failures\n" +
-            "last_error=$lastError\nlast_first_frame_ms=$lastStartupMs"
+    fun report(): String = "NewPipeT ${BuildConfig.VERSION_NAME}\nExtractor ${BuildConfig.EXTRACTOR_VERSION}\n" +
+        "starts=$starts\nfirst_frames=$frames\nretries=$retries\nerrors=$failures\n" +
+        "last_error=$lastError\nlast_first_frame_ms=$lastStartupMs"
 
     @JvmStatic
     @Synchronized

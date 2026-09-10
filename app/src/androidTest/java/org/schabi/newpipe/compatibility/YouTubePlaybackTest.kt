@@ -44,7 +44,8 @@ class YouTubePlaybackTest {
     @Test(timeout = 120000)
     fun searchChannelAndPlaylistRemainUsable() {
         val search = SearchInfo.getInfo(
-            service, service.searchQHFactory.fromQuery("Blender Open Movies", listOf("playlists"), "")
+            service,
+            service.searchQHFactory.fromQuery("Blender Open Movies", listOf("playlists"), "")
         )
         assertFalse("Search returned no results", search.relatedItems.isEmpty())
         val playlistUrl = search.relatedItems.filterIsInstance<PlaylistInfoItem>().firstOrNull()?.url
@@ -69,19 +70,20 @@ class YouTubePlaybackTest {
         var player: ExoPlayer? = null
         var texture: SurfaceTexture? = null
         var surface: Surface? = null
-        fun maybeComplete() { if (frame.get() && audio.get()) complete.countDown() }
+        fun maybeComplete() {
+            if (frame.get() && audio.get()) complete.countDown()
+        }
         try {
             instrumentation.runOnMainSync {
                 val context = instrumentation.targetContext
                 val resolver = VideoPlaybackResolver(
-                    context, PlayerDataSource(context, null),
+                    context,
+                    PlayerDataSource(context, null),
                     object : VideoPlaybackResolver.QualityResolver {
-                        override fun getDefaultResolutionIndex(sortedVideos: List<VideoStream>): Int =
-                            sortedVideos.indexOfFirst { it.resolution == "360p" }
-                                .takeIf { it >= 0 } ?: sortedVideos.lastIndex
+                        override fun getDefaultResolutionIndex(sortedVideos: List<VideoStream>): Int = sortedVideos.indexOfFirst { it.resolution == "360p" }
+                            .takeIf { it >= 0 } ?: sortedVideos.lastIndex
 
-                        override fun getOverrideResolutionIndex(sortedVideos: List<VideoStream>, playbackQuality: String): Int =
-                            getDefaultResolutionIndex(sortedVideos)
+                        override fun getOverrideResolutionIndex(sortedVideos: List<VideoStream>, playbackQuality: String): Int = getDefaultResolutionIndex(sortedVideos)
                     }
                 )
                 val source = resolver.resolve(info)

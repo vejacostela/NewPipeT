@@ -7,7 +7,9 @@ object DiagnosticRedactor {
         val trimmed = line.trim()
         when {
             trimmed.startsWith("at ") -> trimmed.substringBefore("http")
+
             trimmed.startsWith("... ") -> trimmed
+
             else -> {
                 val name = trimmed.removePrefix("Caused by: ").removePrefix("Suppressed: ")
                     .substringBefore(':')

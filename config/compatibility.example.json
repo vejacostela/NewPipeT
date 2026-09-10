@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "kind": "compatibility",
+  "application_id": "io.github.vejacostela.newpipet",
+  "revision": 1,
+  "issued_at": 0,
+  "expires_at": 0,
+  "min_version_code": 1015,
+  "max_version_code": 2100000000,
+  "playback": {
+    "network_retries": 2,
+    "refresh_expired_streams": true
+  }
+}

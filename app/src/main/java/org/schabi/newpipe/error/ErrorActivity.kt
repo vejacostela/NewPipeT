@@ -262,7 +262,6 @@ class ErrorActivity : AppCompatActivity() {
         // BUNDLE TAGS
         const val ERROR_INFO = "error_info"
 
-
         private const val ERROR_GITHUB_ISSUE_URL = "https://github.com/vejacostela/NewPipeT/issues"
     }
 }

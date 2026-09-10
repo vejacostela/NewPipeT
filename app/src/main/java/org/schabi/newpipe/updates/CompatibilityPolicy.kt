@@ -33,7 +33,8 @@ data class PolicyDocument(
             require(retries in 0..3)
             require(settings["refresh_expired_streams"] is Boolean)
             return PolicyDocument(
-                revision, expires,
+                revision,
+                expires,
                 CompatibilityPolicy(retries, settings.getBoolean("refresh_expired_streams"))
             )
         }
@@ -67,6 +68,7 @@ object CompatibilityPolicyStore {
 
     private fun verify(context: Context, envelope: String): PolicyDocument = PolicyDocument.parse(
         SignedDocument.verify(envelope, OwnedUpdateClient.installedKey(context)),
-        Instant.now().epochSecond, BuildConfig.VERSION_CODE
+        Instant.now().epochSecond,
+        BuildConfig.VERSION_CODE
     )
 }
