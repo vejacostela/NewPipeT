@@ -1,0 +1,103 @@
+name: Keep NewPipeExtractor current
+
+on:
+  schedule:
+    - cron: '17 */12 * * *'
+  workflow_dispatch:
+    inputs:
+      extractor_revision:
+        description: Optional full NewPipeExtractor commit SHA
+        required: false
+        type: string
+
+concurrency:
+  group: update-newpipe-extractor
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      UPDATE_BRANCH: automation/newpipe-extractor
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve upstream revision
+        id: revision
+        env:
+          REQUESTED_REVISION: ${{ inputs.extractor_revision }}
+        run: |
+          set -euo pipefail
+          revision="$REQUESTED_REVISION"
+          if [[ -z "$revision" ]]; then
+            revision="$(gh api repos/TeamNewPipe/NewPipeExtractor/commits/dev --jq .sha)"
+          fi
+          if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid extractor revision: expected a full commit SHA" >&2
+            exit 1
+          fi
+          gh api "repos/TeamNewPipe/NewPipeExtractor/commits/$revision" --silent
+          echo "sha=$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Update pinned dependency
+        id: update
+        run: |
+          set -euo pipefail
+          output="$(python3 scripts/update_newpipe_extractor.py '${{ steps.revision.outputs.sha }}')"
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK
+        if: steps.update.outputs.changed == 'true'
+        uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: gradle
+
+      - name: Validate updater
+        if: steps.update.outputs.changed == 'true'
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Build and test candidate
+        if: steps.update.outputs.changed == 'true'
+        run: ./gradlew assembleContinuous lintContinuous testDebugUnitTest --stacktrace -DskipFormatKtlint
+
+      - name: Create or refresh pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          REVISION: ${{ steps.revision.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git checkout -B "$UPDATE_BRANCH"
+          git add gradle/libs.versions.toml
+          git commit -m "Update NewPipeExtractor to ${REVISION:0:12}"
+          git push --force-with-lease origin "$UPDATE_BRANCH"
+
+          pr_number="$(gh pr list --head "$UPDATE_BRANCH" --base dev --state open --json number --jq '.[0].number // empty')"
+          body="Automated compatibility update to TeamNewPipe/NewPipeExtractor@${REVISION}.\n\nThe Android app compiled successfully and JVM/lint checks passed before this pull request was created. Merge only after normal review and device playback checks."
+          if [[ -z "$pr_number" ]]; then
+            gh pr create --base dev --head "$UPDATE_BRANCH" \
+              --title "Update NewPipeExtractor to ${REVISION:0:12}" --body "$body"
+          else
+            gh pr edit "$pr_number" \
+              --title "Update NewPipeExtractor to ${REVISION:0:12}" --body "$body"
+          fi
+
+      - name: Report incompatible candidate
+        if: failure() && steps.update.outputs.changed == 'true'
+        env:
+          REVISION: ${{ steps.revision.outputs.sha }}
+        run: |
+          echo "NewPipeExtractor ${REVISION} was not proposed because compatibility checks failed." >> "$GITHUB_STEP_SUMMARY"
