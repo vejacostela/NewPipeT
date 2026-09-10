@@ -74,6 +74,12 @@ Para reverter um ajuste, publique os valores anteriores em uma revisão nova; n�
 
 Os testes de rede são opt-in e ignorados no CI offline. Um teste ignorado não demonstra compatibilidade. O relatório do workflow diferencia exceções de extração, falhas HTTP, timeout e erros do decodificador. Um vídeo de controle removido ou limitação da rede do runner pode fazer a verificação falhar; é necessário verificar a causa antes de atribuir a falha ao extractor.
 
+Se o relatório mostrar `SignInConfirmNotBotException` e `LOGIN_REQUIRED`, o YouTube exigiu confirmação de acesso naquela execução. Isso mantém o teste de reprodução reprovado e impede a assinatura de uma release. Não marque esse caso como sucesso nem remova o teste. Repita a verificação em um dispositivo ou runner de teste em que o acesso ao vídeo público esteja disponível.
+
+Opcionalmente, configure a variável de repositório `NEWPIPET_PLAYBACK_RUNNER` com o rótulo de um runner Linux Android sob controle do mantenedor, com SDK e KVM disponíveis. Ela é usada pela validação de release e pelos testes manuais/agendados em `dev`. Pull requests continuam usando runners do GitHub. Sem essa variável, todos usam `ubuntu-latest`. Nenhum runner adicional é criado automaticamente.
+
+Na validação de 10/09/2026, a busca, a playlist e o canal passaram no GitHub, mas a reprodução recebeu essa exigência de confirmação. Esse resultado não comprova reprodução funcional nem uma quebra do parser. A compilação e os testes JVM/Android são verificações separadas. A análise Android Lint conserva a configuração não bloqueante herdada; consulte também seu relatório antes de publicar.
+
 No emulador ou dispositivo de teste:
 
 ```sh

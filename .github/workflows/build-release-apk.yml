@@ -27,7 +27,7 @@ concurrency:
 jobs:
   validate:
     if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.NEWPIPET_PLAYBACK_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
