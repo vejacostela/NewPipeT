@@ -9,6 +9,10 @@ import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 
 import org.schabi.newpipe.NewVersionWorker;
+import org.schabi.newpipe.player.helper.PlaybackDiagnostics;
+import org.schabi.newpipe.util.InfoCache;
+import org.schabi.newpipe.util.ReleaseVersionUtil;
+import org.schabi.newpipe.util.external_communication.ShareUtils;
 import org.schabi.newpipe.R;
 
 public class UpdateSettingsFragment extends BasePreferenceFragment {
@@ -38,6 +42,37 @@ public class UpdateSettingsFragment extends BasePreferenceFragment {
                 .setOnPreferenceChangeListener(updatePreferenceChange);
         requirePreference(R.string.manual_update_key)
                 .setOnPreferenceClickListener(manualUpdateClick);
+        final boolean release = ReleaseVersionUtil.INSTANCE.isReleaseApk();
+        requirePreference(R.string.update_app_key).setEnabled(release);
+        requirePreference(R.string.manual_update_key).setEnabled(release);
+        requirePreference(R.string.newpipet_channel_key).setEnabled(release);
+        requirePreference(R.string.newpipet_policy_key).setEnabled(release);
+        requirePreference(R.string.newpipet_channel_key)
+                .setOnPreferenceChangeListener((p, value) -> {
+                    defaultPreferences.edit()
+                            .putLong(getString(R.string.update_expiry_key), 0).apply();
+                    return true;
+                });
+        requirePreference(R.string.newpipet_diagnostics_key).setOnPreferenceClickListener(p -> {
+            final String report = PlaybackDiagnostics.report();
+            new AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.newpipet_diagnostics_title)
+                    .setMessage(report)
+                    .setPositiveButton(android.R.string.copy, (dialog, which) ->
+                            ShareUtils.copyToClipboard(requireContext(), report))
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setNeutralButton(R.string.newpipet_clear_diagnostics, (dialog, which) ->
+                            PlaybackDiagnostics.clear())
+                    .show();
+            return true;
+        });
+        requirePreference(R.string.newpipet_clear_cache_key).setOnPreferenceClickListener(p -> {
+            InfoCache.getInstance().clearCache();
+            Toast.makeText(requireContext(), R.string.newpipet_cache_cleared,
+                    Toast.LENGTH_SHORT).show();
+            return true;
+        });
+
     }
 
     public static void askForConsentToUpdateChecks(final Context context) {

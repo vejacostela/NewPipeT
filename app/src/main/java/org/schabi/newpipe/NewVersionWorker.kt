@@ -11,16 +11,18 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.preference.PreferenceManager
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.grack.nanojson.JsonParser
-import com.grack.nanojson.JsonParserException
 import java.io.IOException
-import org.schabi.newpipe.extractor.downloader.Response
-import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import org.schabi.newpipe.updates.CompatibilityPolicyStore
+import org.schabi.newpipe.updates.OwnedUpdateClient
 import org.schabi.newpipe.util.ReleaseVersionUtil
 
 class NewVersionWorker(
@@ -87,100 +89,77 @@ class NewVersionWorker(
         }
     }
 
-    @Throws(IOException::class, ReCaptchaException::class)
     private fun checkNewVersion() {
-        // Check if the current apk is a github one or not.
-        if (!ReleaseVersionUtil.isReleaseApk) {
-            return
-        }
-
-        if (!inputData.getBoolean(IS_MANUAL, false)) {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
-            // Check if the last request has happened a certain time ago
-            // to reduce the number of API requests.
-            val expiry = prefs.getLong(applicationContext.getString(R.string.update_expiry_key), 0)
-            if (!ReleaseVersionUtil.isLastUpdateCheckExpired(expiry)) {
-                return
-            }
-        }
-
-        // Make a network request to get latest NewPipe data.
-        val response = DownloaderImpl.getInstance().get(NEWPIPE_API_URL)
-        handleResponse(response)
-    }
-
-    private fun handleResponse(response: Response) {
+        if (!ReleaseVersionUtil.isReleaseApk) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
-        try {
-            // Store a timestamp which needs to be exceeded,
-            // before a new request to the API is made.
-            val newExpiry = ReleaseVersionUtil.coerceUpdateCheckExpiry(response.getHeader("expires"))
-            prefs.edit {
-                putLong(applicationContext.getString(R.string.update_expiry_key), newExpiry)
-            }
-        } catch (e: Exception) {
-            if (DEBUG) {
-                Log.w(TAG, "Could not extract and save new expiry date", e)
-            }
+        val manual = inputData.getBoolean(IS_MANUAL, false)
+        if (!manual) {
+            if (!prefs.getBoolean(applicationContext.getString(R.string.update_app_key), false)) return
+            val expiry = prefs.getLong(applicationContext.getString(R.string.update_expiry_key), 0)
+            if (!ReleaseVersionUtil.isLastUpdateCheckExpired(expiry)) return
         }
-
-        // Parse the json from the response.
-        try {
-            val newpipeVersionInfo = JsonParser.`object`()
-                .from(response.responseBody()).getObject("flavors")
-                .getObject("newpipe")
-
-            val versionName = newpipeVersionInfo.getString("version")
-            val versionCode = newpipeVersionInfo.getInt("version_code")
-            val apkLocationUrl = newpipeVersionInfo.getString("apk")
-            compareAppVersionAndShowNotification(versionName, apkLocationUrl, versionCode)
-        } catch (e: JsonParserException) {
-            // Most likely something is wrong in data received from NEWPIPE_API_URL.
-            // Do not alarm user and fail silently.
-            if (DEBUG) {
-                Log.w(TAG, "Could not get NewPipe API: invalid json", e)
+        val client = OwnedUpdateClient(applicationContext)
+        val update = client.latest(prefs.getString(CHANNEL_KEY, "stable") == "beta")
+        if (update != null) {
+            compareAppVersionAndShowNotification(update.versionName, update.apkUrl, update.versionCode)
+        } else if (manual) {
+            showToast(R.string.newpipet_no_release)
+        }
+        // Cache only a successful response. A failed check must remain retryable.
+        prefs.edit {
+            putLong(
+                applicationContext.getString(R.string.update_expiry_key),
+                java.time.Instant.now().epochSecond + 6 * 3600
+            )
+            putString(STATUS_KEY, "ok")
+        }
+        if (prefs.getBoolean(CompatibilityPolicyStore.ENABLED, false)) {
+            // Keep a working local policy if this optional endpoint is unavailable or invalid.
+            runCatching {
+                client.compatibilityDocument()?.let { CompatibilityPolicyStore.install(applicationContext, it) }
             }
         }
     }
 
-    override fun doWork(): Result {
-        return try {
-            checkNewVersion()
-            Result.success()
-        } catch (e: IOException) {
-            Log.w(TAG, "Could not fetch NewPipe API: probably network problem", e)
-            Result.failure()
-        } catch (e: ReCaptchaException) {
-            Log.e(TAG, "ReCaptchaException should never happen here.", e)
-            Result.failure()
+    private fun showToast(message: Int) {
+        ContextCompat.getMainExecutor(applicationContext).execute {
+            Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).show()
         }
+    }
+
+    override fun doWork(): Result = try {
+        checkNewVersion()
+        Result.success()
+    } catch (exception: Exception) {
+        Log.w(TAG, "Update check failed: ${exception.javaClass.simpleName}")
+        PreferenceManager.getDefaultSharedPreferences(applicationContext).edit {
+            putString(STATUS_KEY, "failed")
+        }
+        if (inputData.getBoolean(IS_MANUAL, false)) showToast(R.string.newpipet_update_failed)
+        if (exception is IOException && runAttemptCount < 2) Result.retry() else Result.failure()
     }
 
     companion object {
         private val DEBUG = MainActivity.DEBUG
         private val TAG = NewVersionWorker::class.java.simpleName
-        private const val NEWPIPE_API_URL = "https://newpipe.net/api/data.json"
         private const val IS_MANUAL = "isManual"
+        const val CHANNEL_KEY = "newpipet_update_channel"
+        const val STATUS_KEY = "newpipet_update_status"
 
-        /**
-         * Start a new worker which checks if all conditions for performing a version check are met,
-         * fetches the API endpoint [.NEWPIPE_API_URL] containing info about the latest NewPipe
-         * version and displays a notification about an available update if one is available.
-         * <br></br>
-         * Following conditions need to be met, before data is requested from the server:
-         *
-         *  *  The app is signed with the correct signing key (by TeamNewPipe / schabi).
-         * If the signing key differs from the one used upstream, the update cannot be installed.
-         *  * The user enabled searching for and notifying about updates in the settings.
-         *  * The app did not recently check for updates.
-         * We do not want to make unnecessary connections and DOS our servers.
-         */
         @JvmStatic
         fun enqueueNewVersionCheckingWork(context: Context, isManual: Boolean) {
-            val workRequest = OneTimeWorkRequestBuilder<NewVersionWorker>()
+            val channel = PreferenceManager.getDefaultSharedPreferences(context)
+                .getString(CHANNEL_KEY, "stable")
+            val request = OneTimeWorkRequestBuilder<NewVersionWorker>()
                 .setInputData(workDataOf(IS_MANUAL to isManual))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
-            WorkManager.getInstance(context).enqueue(workRequest)
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "newpipet-updates-$channel-$isManual",
+                ExistingWorkPolicy.KEEP,
+                request
+            )
         }
     }
 }

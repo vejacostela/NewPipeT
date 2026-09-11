@@ -1,0 +1,70 @@
+name: Sign compatibility settings
+
+on:
+  workflow_dispatch:
+    inputs:
+      network_retries:
+        description: Maximum additional network attempts per video
+        type: choice
+        options: ['0', '1', '2', '3']
+        default: '2'
+      refresh_expired:
+        description: Allow one refresh for a known expired streaming URL
+        type: boolean
+        default: true
+      min_version:
+        description: Minimum compatible Android version code
+        type: string
+        default: '1015'
+      max_version:
+        description: Maximum compatible Android version code
+        type: string
+        default: '2100000000'
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    if: github.ref == 'refs/heads/dev'
+    environment: newpipet-stable
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+      - name: Prepare bounded policy and sign it
+        env:
+          RETRIES: ${{ inputs.network_retries }}
+          REFRESH: ${{ inputs.refresh_expired }}
+          MIN_VERSION: ${{ inputs.min_version }}
+          MAX_VERSION: ${{ inputs.max_version }}
+          NEWPIPET_KEYSTORE_BASE64: ${{ secrets.NEWPIPET_KEYSTORE_BASE64 }}
+          NEWPIPET_STORE_PASSWORD: ${{ secrets.NEWPIPET_STORE_PASSWORD }}
+          NEWPIPET_KEY_ALIAS: ${{ secrets.NEWPIPET_KEY_ALIAS }}
+          NEWPIPET_KEY_PASSWORD: ${{ secrets.NEWPIPET_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          test -n "$NEWPIPET_KEYSTORE_BASE64" || { echo 'Configure the NewPipeT signing secrets first.' >&2; exit 1; }
+          export NEWPIPET_KEYSTORE="$RUNNER_TEMP/newpipet-policy.keystore"
+          umask 077
+          printf '%s' "$NEWPIPET_KEYSTORE_BASE64" | base64 --decode > "$NEWPIPET_KEYSTORE"
+          mkdir -p dist
+          python3 scripts/compatibility_document.py --network-retries "$RETRIES" --refresh-expired "$REFRESH" --min-version "$MIN_VERSION" --max-version "$MAX_VERSION" --hours 48 --output "$RUNNER_TEMP/policy.json"
+          java scripts/SignDocument.java "$RUNNER_TEMP/policy.json" dist/compatibility.json
+      - name: Remove local signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/newpipet-policy.keystore" "$RUNNER_TEMP/policy.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: signed-compatibility-settings
+          path: dist/compatibility.json
+          retention-days: 2
+      - name: Publication instructions
+        run: echo 'Review the signed artifact, then upload compatibility.json to the compatibility prerelease in this repository. It expires 48 hours after this run.' >> "$GITHUB_STEP_SUMMARY"

@@ -39,8 +39,8 @@ configure<ApplicationExtension> {
     namespace = NEWPIPE_APPLICATION_ID_OLD
 
     defaultConfig {
-        applicationId = NEWPIPE_APPLICATION_ID_OLD
-        resValue("string", "app_name", "NewPipe")
+        applicationId = "io.github.vejacostela.newpipet"
+        resValue("string", "app_name", "NewPipeT")
         minSdk {
             version = release(NEWPIPE_VERSION_SDK_MIN)
         }
@@ -50,10 +50,23 @@ configure<ApplicationExtension> {
 
         versionCode = System.getProperty("versionCodeOverride")?.toInt() ?: NEWPIPE_VERSION_CODE
 
-        versionName = NEWPIPE_VERSION_NAME
+        versionName = System.getProperty("versionNameOverride") ?: NEWPIPE_VERSION_NAME
         System.getProperty("versionNameSuffix")?.let { versionNameSuffix = it }
 
+        buildConfigField("String", "EXTRACTOR_VERSION", "\"${rootProject.file("extractor/VERSION").readText().trim()}\"")
+        manifestPlaceholders["ownedRelease"] = "false"
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    val releaseKeystore = providers.environmentVariable("NEWPIPET_KEYSTORE").orNull
+    if (!releaseKeystore.isNullOrBlank()) {
+        signingConfigs.create("ownedRelease") {
+            storeFile = file(releaseKeystore)
+            storePassword = System.getenv("NEWPIPET_STORE_PASSWORD")
+            keyAlias = System.getenv("NEWPIPET_KEY_ALIAS")
+            keyPassword = System.getenv("NEWPIPET_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
@@ -63,17 +76,19 @@ configure<ApplicationExtension> {
             // suffix the app id and the app name with git branch name
             if (normalizedWorkingBranch.isEmpty() || workingBranch in defaultBranches) {
                 applicationIdSuffix = ".debug"
-                resValue("string", "app_name", "NewPipe Debug")
+                resValue("string", "app_name", "NewPipeT Debug")
             } else {
                 applicationIdSuffix = ".debug.$normalizedWorkingBranch"
-                resValue("string", "app_name", "NewPipe $workingBranch")
+                resValue("string", "app_name", "NewPipeT $workingBranch")
             }
         }
 
         release {
+            if (!releaseKeystore.isNullOrBlank()) signingConfig = signingConfigs.getByName("ownedRelease")
+            manifestPlaceholders["ownedRelease"] = "true"
             System.getProperty("packageSuffix")?.let { suffix ->
                 applicationIdSuffix = suffix
-                resValue("string", "app_name", "NewPipe $suffix")
+                resValue("string", "app_name", "NewPipeT $suffix")
             }
             isMinifyEnabled = true
             isShrinkResources = true
@@ -85,16 +100,17 @@ configure<ApplicationExtension> {
 
         register("continuous") {
             initWith(getByName("release"))
+            manifestPlaceholders["ownedRelease"] = "false"
             signingConfig = signingConfigs.getByName("debug")
             isDefault = true
 
             // suffix the app id and the app name with git branch name
             if (normalizedWorkingBranch.isEmpty() || workingBranch in defaultBranches) {
                 applicationIdSuffix = ".continuous"
-                resValue("string", "app_name", "NewPipe Continuous")
+                resValue("string", "app_name", "NewPipeT Continuous")
             } else {
                 applicationIdSuffix = ".continuous.$normalizedWorkingBranch"
-                resValue("string", "app_name", "NewPipe $workingBranch")
+                resValue("string", "app_name", "NewPipeT $workingBranch")
             }
         }
     }
@@ -221,7 +237,7 @@ dependencies {
     // NewPipe libraries
     implementation(projects.shared)
     implementation(libs.newpipe.nanojson)
-    implementation(libs.newpipe.extractor)
+    implementation(project(":extractor"))
     implementation(libs.newpipe.filepicker)
 
     // Checkstyle

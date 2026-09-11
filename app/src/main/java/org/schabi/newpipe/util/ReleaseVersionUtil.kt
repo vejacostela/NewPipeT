@@ -1,37 +1,15 @@
 package org.schabi.newpipe.util
 
-import android.content.pm.PackageManager
-import androidx.core.content.pm.PackageInfoCompat
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import org.schabi.newpipe.App
-import org.schabi.newpipe.error.ErrorInfo
-import org.schabi.newpipe.error.ErrorUtil.Companion.createNotification
-import org.schabi.newpipe.error.UserAction
 
 object ReleaseVersionUtil {
-    // Public key of the certificate that is used in NewPipe release versions
-    private const val RELEASE_CERT_PUBLIC_KEY_SHA256 =
-        "cb84069bd68116bafae5ee4ee5b08a567aa6d898404e7cb12f9e756df5cf5cab"
-
-    @OptIn(ExperimentalStdlibApi::class)
-    val isReleaseApk by lazy {
-        @Suppress("NewApi")
-        val certificates = mapOf(
-            RELEASE_CERT_PUBLIC_KEY_SHA256.hexToByteArray() to PackageManager.CERT_INPUT_SHA256
-        )
-        val app = App.instance
-        try {
-            PackageInfoCompat.hasSignatures(app.packageManager, app.packageName, certificates, false)
-        } catch (e: PackageManager.NameNotFoundException) {
-            createNotification(
-                app,
-                ErrorInfo(e, UserAction.CHECK_FOR_NEW_APP_VERSION, "Could not find package info")
-            )
-            false
-        }
-    }
+    // Update documents must be signed by this installed APK's key.
+    val isReleaseApk: Boolean
+        get() = org.schabi.newpipe.BuildConfig.BUILD_TYPE == "release" &&
+            org.schabi.newpipe.BuildConfig.APPLICATION_ID ==
+            org.schabi.newpipe.updates.ReleaseUpdate.APPLICATION_ID
 
     fun isLastUpdateCheckExpired(expiry: Long): Boolean {
         return Instant.ofEpochSecond(expiry) < Instant.now()

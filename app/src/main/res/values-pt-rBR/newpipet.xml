@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="newpipet_no_release">Ainda não há uma atualização assinada do NewPipeT disponível.</string>
+    <string name="newpipet_update_failed">Não foi possível verificar uma atualização. Tente novamente mais tarde.</string>
+    <string name="newpipet_channel_title">Canal de atualização</string>
+    <string name="newpipet_policy_title">Receber ajustes de compatibilidade</string>
+    <string name="newpipet_policy_summary">Permite ajustes assinados do NewPipeT durante a busca por atualizações. Ajustes inválidos ou vencidos usam os padrões do aplicativo.</string>
+    <string name="newpipet_diagnostics_title">Diagnóstico da reprodução</string>
+    <string name="newpipet_diagnostics_summary">Veja os contadores locais da sessão e copie um relatório sem links dos vídeos ou histórico. Nada é enviado automaticamente.</string>
+    <string name="newpipet_clear_diagnostics">Zerar contadores</string>
+    <string name="newpipet_clear_cache_title">Atualizar informações dos vídeos</string>
+    <string name="newpipet_clear_cache_summary">Limpa dados temporários. Preserva downloads, inscrições e histórico.</string>
+    <string name="newpipet_cache_cleared">Informações temporárias dos vídeos removidas.</string>
+    <string-array name="newpipet_channels">
+        <item>Estável — versões regulares</item>
+        <item>Beta — inclui versões experimentais</item>
+    </string-array>
+</resources>

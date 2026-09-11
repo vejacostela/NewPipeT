@@ -24,9 +24,6 @@ public class MainSettingsFragment extends BasePreferenceFragment {
 
         // Check if the app is updatable
         if (!ReleaseVersionUtil.INSTANCE.isReleaseApk()) {
-            getPreferenceScreen().removePreference(
-                    requirePreference(R.string.update_pref_screen_key));
-
             defaultPreferences.edit().putBoolean(getString(R.string.update_app_key), false).apply();
         }
 

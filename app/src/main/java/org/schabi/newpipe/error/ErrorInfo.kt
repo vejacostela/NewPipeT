@@ -162,7 +162,7 @@ class ErrorInfo private constructor(
 
         const val SERVICE_NONE = "<unknown_service>"
 
-        const val YOUTUBE_IP_BAN_FAQ_URL = "https://newpipe.net/FAQ/#ip-banned-youtube"
+        const val YOUTUBE_IP_BAN_FAQ_URL = "https://github.com/vejacostela/NewPipeT/blob/dev/doc/NEWPIPET.md#troubleshooting"
 
         private fun getServiceName(serviceId: Int?) = // not using getNameOfServiceById since we want to accept a nullable serviceId and we
             // want to default to SERVICE_NONE
