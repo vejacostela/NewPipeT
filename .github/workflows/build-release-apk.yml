@@ -103,7 +103,7 @@ jobs:
           python3 scripts/release_manifest.py --metadata app/build/outputs/apk/release/output-metadata.json --apk "$apk" --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" --output "$RUNNER_TEMP/newpipet-manifest.json"
           java scripts/SignDocument.java "$RUNNER_TEMP/newpipet-manifest.json" dist/newpipet-update.json
           cp "$apk" dist/NewPipeT.apk
-          sha256sum dist/NewPipeT.apk > dist/SHA256SUMS
+          (cd dist && sha256sum NewPipeT.apk > SHA256SUMS)
       - name: Delete local signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/newpipet-release.keystore" "$RUNNER_TEMP/newpipet-manifest.json"
